@@ -17,7 +17,7 @@ class RestartProcessHandler(LoggingEventHandler):
         super(RestartProcessHandler, self).__init__(*args, **kwargs)
 
     def kill_processes(self):
-        proc = subprocess.Popen(['pgrep', self.proc_name],
+        proc = subprocess.Popen(['pgrep', 'xterm'],
                                 stdout=subprocess.PIPE)
         out, err = proc.communicate()
         pids = [int(x) for x in out.strip().split('\n')] if out != '' else []
@@ -25,13 +25,14 @@ class RestartProcessHandler(LoggingEventHandler):
         for pid in pids:
             os.kill(pid, 9)
 
-
     def on_any_event(self, event):
         self.kill_processes()
         # restart glance (watcher script should be run in same VENV where glance
         # is mind that!)
-        # proc = subprocess.call(['./restart-glance.sh'])
-        proc = subprocess.Popen([self.proc_name])
+        xterm = ['xterm', '-e']
+        command = [x.strip() for x in self.proc_name.split(' ')]
+        xterm.extend(command)
+        subprocess.Popen(xterm)
 
 
 def main():
@@ -42,10 +43,6 @@ def main():
     process_name = "glance-api" if len(sys.argv) == 2 else sys.argv[2]
     path = sys.argv[1]
     event_handler = RestartProcessHandler(process_name)
-    if '--kill' in sys.argv:
-        sys.argv.remove('--kill')
-        # kill prior to any other action
-        event_handler.kill_processes()
     observer = Observer()
     observer.schedule(event_handler, path, recursive=True)
     observer.start()
