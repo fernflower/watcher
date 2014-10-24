@@ -14,10 +14,13 @@ class WatcherError(Exception):
 class RestartProcessHandler(LoggingEventHandler):
     def __init__(self, proc_name, *args, **kwargs):
         self.proc_name = proc_name
+        self.delta = kwargs.get('delta', 5)
+        self.last_reacted = 0
+        self.start_process()
         super(RestartProcessHandler, self).__init__(*args, **kwargs)
 
-    def kill_processes(self):
-        proc = subprocess.Popen(['pgrep', 'xterm'],
+    def kill_process(self):
+        proc = subprocess.Popen(['pgrep', self.proc_name],
                                 stdout=subprocess.PIPE)
         out, err = proc.communicate()
         pids = [int(x) for x in out.strip().split('\n')] if out != '' else []
@@ -25,14 +28,26 @@ class RestartProcessHandler(LoggingEventHandler):
         for pid in pids:
             os.kill(pid, 9)
 
-    def on_any_event(self, event):
-        self.kill_processes()
-        # restart glance (watcher script should be run in same VENV where glance
-        # is mind that!)
+    def start_process(self):
         xterm = ['xterm', '-e']
         command = [x.strip() for x in self.proc_name.split(' ')]
         xterm.extend(command)
         subprocess.Popen(xterm)
+        self.last_reacted = time.time()
+
+    def on_created(self, event):
+        super(RestartProcessHandler, self).on_created(event)
+        self._process_event()
+
+    def on_modified(self, event):
+        super(RestartProcessHandler, self).on_modified(event)
+        self._process_event()
+
+    def _process_event(self):
+        if time.time() - self.last_reacted < self.delta:
+            return
+        self.kill_process()
+        self.start_process()
 
 
 def main():
@@ -50,7 +65,7 @@ def main():
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        event_handler.kill_processes()
+        event_handler.kill_process()
         observer.stop()
     observer.join()
 
